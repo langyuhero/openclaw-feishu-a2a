@@ -1,6 +1,6 @@
 {
   "name": "openclaw-feishu-a2a",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "OpenClaw plugin for Feishu/Lark group chat A2A collaboration with task tracking and auto @-back enforcement | 飞书群聊多 Agent 协作插件，带任务状态跟踪和自动 @ 回兜底",
   "main": "index.js",
   "author": {

@@ -1,7 +1,7 @@
 {
   "id": "openclaw-feishu-a2a",
   "name": "OpenClaw Feishu A2A",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Enables bot-to-bot @ communication in Feishu group chats with task state tracking and auto @-back enforcement",
   "entry": "./index.js",
   "skills": ["./skills"],

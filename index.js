@@ -205,6 +205,7 @@ const plugin = {
     let botRegistry = {};
     const botOpenIdSet = new Set();
     const botOpenIdToAgentMap = new Map();
+    const accountIdToAgentMap = new Map(); // accountId → { agentId, botOpenId, botName }
     const agentIdSet = new Set();
 
     const nativeA2AChats = new Set();
@@ -278,11 +279,15 @@ const plugin = {
       botRegistry = registry;
       botOpenIdSet.clear();
       botOpenIdToAgentMap.clear();
+      accountIdToAgentMap.clear();
       agentIdSet.clear();
 
       for (const [agentId, bot] of Object.entries(registry)) {
         botOpenIdSet.add(bot.botOpenId);
         botOpenIdToAgentMap.set(bot.botOpenId, { agentId, ...bot });
+        if (bot.accountId) {
+          accountIdToAgentMap.set(bot.accountId, { agentId, botOpenId: bot.botOpenId, botName: bot.botName });
+        }
         agentIdSet.add(agentId);
       }
 
@@ -327,6 +332,21 @@ const plugin = {
       const sessionKey = ctx.sessionKey || '';
       const chatId = extractChatId(sessionKey, event.conversationId);
 
+      // --- Capture user message for session context ---
+      if (chatId && event.content) {
+        const senderOpenId = event.senderId || event.metadata?.senderId;
+        const isBotSender = senderOpenId && botOpenIdSet.has(senderOpenId);
+        if (!isBotSender) {
+          const cleanContent = (event.content || '')
+            .replace(/<at[^>]*>[^<]*<\/at>/g, '')
+            .trim()
+            .substring(0, 500);
+          if (cleanContent) {
+            lastUserMessage.set(chatId, cleanContent);
+          }
+        }
+      }
+
       // --- Role detection ---
       let role = 'NEUTRAL';
       let activeSession = null;
@@ -369,6 +389,15 @@ const plugin = {
         } else if (activeSession.tasks.length > 0 && activeSession.tasks.every(t => t.status === 'completed')) {
           progress += `→ 所有子任务已完成，请汇总结果回复用户。\n`;
         }
+        const recentMessages = sessionStore.getRecentMessages(chatId, 20);
+        if (recentMessages.length > 0) {
+          progress += `\n[群内近期对话记录]\n`;
+          for (const msg of recentMessages) {
+            const time = new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+            progress += `  ${time} ${msg.agentName}：${msg.summary}\n`;
+          }
+          progress += `→ 以上是你不在时群里发生的对话，请结合这些信息做判断。\n`;
+        }
         roleContext = progress + '\n';
 
       } else if (role === 'WORKER') {
@@ -397,6 +426,21 @@ const plugin = {
           `   - 复杂多人任务 → 先告知用户分工计划，确认后再派发\n` +
           `   - 简单单人任务 → 直接 @ 派发\n` +
           `3. 每次回复最多 @ 1 个 Agent，等对方回传后再 @ 下一个\n\n`;
+      }
+
+      // --- Smart routing guidance for workers ---
+      if (currentAgentId !== 'main' && role !== 'HOST') {
+        const routingRules = {
+          strategist: `[智能协作路由]\n` +
+            `你可以直接回答的：观点判断、方案对比、优劣分析、建议等不依赖外部数据的决策问题。\n` +
+            `你应该先 @ 司南调研的：涉及具体价格、市场行情、地理信息、历史数据、政策法规等需要事实依据的问题。\n` +
+            `→ 不确定时宁可先让司南查一下，基于数据的建议才有说服力。\n\n`,
+          researcher: `[智能协作路由]\n` +
+            `调研完成后，如果结果需要决策分析（方案选择、优劣对比），可以 @ 谋远 协助分析。\n` +
+            `如果需要文案或视觉输出，可以 @ 灵犀。\n\n`,
+        };
+        const routing = routingRules[currentAgentId];
+        if (routing) roleContext += routing;
       }
 
       // --- Bot list injection (filtered by group membership) ---
@@ -480,7 +524,12 @@ const plugin = {
 - 必须使用 <at user_id="ou_xxxx">名字</at> 格式
 - 禁止使用 @名字 这种明文写法，明文写法不会触发飞书的 @ 投递
 
-${inGroupBots.length > 0 ? `本群中可用的机器人：\n${botList}` : '本群中暂无其他可协作的机器人。'}${missingBotsNote}${permissionNote}`;
+${inGroupBots.length > 0 ? `本群中可用的机器人：\n${botList}` : '本群中暂无其他可协作的机器人。'}${missingBotsNote}${permissionNote}
+
+⛔ 严禁使用内部通信：
+- 在群聊中，所有跨 agent 通信必须通过群里 @ 发消息。用户和其他 agent 需要在群里看到你的消息。
+- 禁止使用 sessions_spawn、sessions_send、sessions_history 等内部通信工具进行跨 agent 对话。
+- 如果有人要求你"把结果发给 xxx"，你必须在群里 @ 对方，而不是用内部通道。`;
 
       debugLog(`[before_prompt_build] Injecting context for agent=${currentAgentId}, role=${role}, inGroup=${inGroupBots.length}`);
 
@@ -491,16 +540,18 @@ ${inGroupBots.length > 0 ? `本群中可用的机器人：\n${botList}` : '本�
     // Hook 2: message_sending — @name replacement + dispatch tracking + auto @back
     // ========================================================================
     api.on('message_sending', (event, ctx) => {
-      debugLog(`[message_sending] agent=${ctx.agentId}, channelId=${ctx.channelId}, sessionKey=${ctx.sessionKey}, convId=${event.conversationId}, len=${event.content?.length}`);
+      const senderInfo = accountIdToAgentMap.get(ctx.accountId);
+      const currentAgentId = senderInfo?.agentId;
+      const chatId = ctx.conversationId;
+
+      debugLog(`[message_sending] agent=${currentAgentId}, accountId=${ctx.accountId}, chatId=${chatId}, len=${event.content?.length}`);
 
       if (ctx.channelId !== 'feishu') return;
 
       let content = event.content;
-      const currentAgentId = ctx.agentId;
-      const chatId = extractChatId(ctx.sessionKey, event.conversationId);
 
       // === Phase 1: @name → <at> tag replacement ===
-      for (const [agentId, bot] of Object.entries(botRegistry)) {
+      for (const [, bot] of Object.entries(botRegistry)) {
         if (bot.accountId === ctx.accountId) continue;
         const flexPattern = escapeRegExp(bot.botName).replace(/-/g, '-?');
         const pattern = new RegExp('@' + flexPattern, 'g');
@@ -512,6 +563,12 @@ ${inGroupBots.length > 0 ? `本群中可用的机器人：\n${botList}` : '本�
           debugLog(`[message_sending] Replaced @${bot.botName} with <at> tag`);
           content = newContent;
         }
+      }
+
+      if (!currentAgentId || !senderInfo) {
+        debugLog(`[message_sending] Unknown accountId=${ctx.accountId}, skipping Phase 2-4`);
+        if (content !== event.content) return { content };
+        return;
       }
 
       // === Phase 2: Task dispatch detection ===
@@ -526,16 +583,13 @@ ${inGroupBots.length > 0 ? `本群中可用的机器人：\n${botList}` : '本�
           if (!targetInfo) continue;
           if (targetInfo.agentId === currentAgentId) continue;
 
-          const currentBot = botRegistry[currentAgentId];
-          if (!currentBot) continue;
-
           const brief = extractBrief(content);
           const userReq = lastUserMessage.get(chatId) || '';
 
           let session = sessionStore.getSession(chatId);
           if (!session) {
             session = sessionStore.createSession(
-              chatId, currentAgentId, currentBot.botOpenId, currentBot.botName, userReq
+              chatId, currentAgentId, senderInfo.botOpenId, senderInfo.botName, userReq
             );
             debugLog(`[message_sending] Created session: chatId=${chatId}, host=${currentAgentId}`);
           }
@@ -548,22 +602,33 @@ ${inGroupBots.length > 0 ? `本群中可用的机器人：\n${botList}` : '本�
             debugLog(`[message_sending] Appended @-back reminder`);
           }
 
-          break; // one @ per reply
+          break;
         }
       }
 
       // === Phase 3: Worker auto @-back to host ===
-      // No chatId dependency — findActiveTaskForWorker scans all sessions
-      const currentBot = botRegistry[currentAgentId];
-      if (currentBot) {
-        const taskInfo = sessionStore.findActiveTaskForWorker(currentBot.botOpenId);
-        if (taskInfo) {
-          const hostBot = botRegistry[taskInfo.session.host];
-          if (hostBot && !content.includes(`<at user_id="${hostBot.botOpenId}">`)) {
-            const hostAtTag = `<at user_id="${hostBot.botOpenId}">${hostBot.botName}</at>`;
-            content = hostAtTag + '\n\n' + content;
-            debugLog(`[message_sending] Auto-injected @-back to host ${hostBot.botName}`);
-          }
+      const taskInfo = sessionStore.findActiveTaskForWorker(senderInfo.botOpenId);
+      if (taskInfo) {
+        const hostBot = botRegistry[taskInfo.session.host];
+        if (hostBot && !content.includes(`<at user_id="${hostBot.botOpenId}">`)) {
+          const hostAtTag = `<at user_id="${hostBot.botOpenId}">${hostBot.botName}</at>`;
+          content = hostAtTag + '\n\n' + content;
+          debugLog(`[message_sending] Auto-injected @-back to host ${hostBot.botName}`);
+        }
+
+        // === Phase 3b: Task completion detection ===
+        const hostOpenId = taskInfo.session.hostOpenId;
+        if (content.includes(`<at user_id="${hostOpenId}">`)) {
+          sessionStore.completeTask(taskInfo.chatId, senderInfo.botOpenId);
+          debugLog(`[message_sending] Marked task completed: worker=${currentAgentId}`);
+        }
+      }
+
+      // === Phase 4: Log message to session for host visibility ===
+      if (chatId) {
+        const anyChatSession = sessionStore.getSession(chatId);
+        if (anyChatSession) {
+          sessionStore.logMessage(chatId, currentAgentId, senderInfo.botName, content);
         }
       }
 
@@ -579,110 +644,9 @@ ${inGroupBots.length > 0 ? `本群中可用的机器人：\n${botList}` : '本�
       }
     });
 
-    // ========================================================================
-    // Hook 3: inbound_claim — Filter bot msgs + detect task completion
-    // ========================================================================
-    api.on('inbound_claim', (event, ctx) => {
-      debugLog(`[inbound_claim] channel=${event.channel}, isGroup=${event.isGroup}, senderId=${event.senderId}, wasMentioned=${event.wasMentioned}`);
-
-      if (event.channel !== 'feishu' || !event.isGroup) return;
-
-      const isBotSender = botOpenIdSet.has(event.senderId);
-      const chatId = event.conversationId;
-
-      // Human message: capture content for session context, pass through
-      if (!isBotSender) {
-        if (chatId && event.content) {
-          const cleanContent = event.content
-            .replace(/<at[^>]*>[^<]*<\/at>/g, '')
-            .trim()
-            .substring(0, 500);
-          if (cleanContent) {
-            lastUserMessage.set(chatId, cleanContent);
-          }
-        }
-        debugLog(`[inbound_claim] Human message from ${event.senderId}, captured & passing through`);
-        return;
-      }
-
-      // Bot message with @mention → A2A delivery
-      if (event.wasMentioned === true) {
-        if (chatId && !nativeA2AChats.has(chatId)) {
-          nativeA2AChats.add(chatId);
-          debugLog(`[inbound_claim] Native A2A delivery confirmed for chat=${chatId}`);
-          log.info(`[openclaw-feishu-a2a] Native A2A delivery confirmed for chat=${chatId}`);
-        }
-
-        // --- Task dispatch detection (session/task creation) ---
-        // This is the primary place for session creation — chatId is always available here
-        let taskCompletionInfo = '';
-        if (chatId) {
-          const senderBot = botOpenIdToAgentMap.get(event.senderId);
-          const receiverAgentId = ctx.agentId;
-          const receiverBot = receiverAgentId ? botRegistry[receiverAgentId] : null;
-
-          if (senderBot && receiverBot && senderBot.agentId !== receiverAgentId) {
-            let session = sessionStore.getSession(chatId);
-            const senderIsWorkerInSession = session && session.tasks.some(
-              t => t.workerOpenId === event.senderId
-            );
-
-            if (!senderIsWorkerInSession) {
-              // Sender is NOT a returning worker → this is a new dispatch
-              const isNotification = /🔕\s*仅通知/.test(event.content || '');
-              if (!isNotification) {
-                if (!session) {
-                  const userReq = lastUserMessage.get(chatId) || '';
-                  session = sessionStore.createSession(
-                    chatId, senderBot.agentId, senderBot.botOpenId, senderBot.botName, userReq
-                  );
-                  debugLog(`[inbound_claim] Created session: host=${senderBot.agentId}, chatId=${chatId}`);
-                }
-                const brief = extractBrief(event.content || '');
-                sessionStore.addTask(chatId, receiverAgentId, receiverBot.botOpenId, receiverBot.botName, brief);
-                debugLog(`[inbound_claim] Tracked dispatch: worker=${receiverAgentId}, brief=${brief}`);
-              }
-            }
-          }
-
-          // --- Task completion detection ---
-          const completionResult = sessionStore.findActiveTaskForWorker(event.senderId);
-          if (completionResult && completionResult.chatId === chatId) {
-            sessionStore.completeTask(chatId, event.senderId);
-            debugLog(`[inbound_claim] Marked task completed: worker=${event.senderId}`);
-
-            const allDone = sessionStore.isAllCompleted(chatId);
-            const remaining = sessionStore.getActiveTasks(chatId);
-
-            if (allDone) {
-              taskCompletionInfo = '\n✅ 该 Agent 已完成你派发的任务。所有子任务已完成，请汇总结果回复用户。';
-            } else {
-              taskCompletionInfo = `\n✅ 该 Agent 已完成你派发的任务。还有 ${remaining.length} 个待完成的任务。`;
-            }
-          }
-        }
-
-        // Inject sender identity + task status
-        const senderBot = botOpenIdToAgentMap.get(event.senderId);
-        if (senderBot && event.content) {
-          const senderAtTag = `<at user_id="${senderBot.botOpenId}">${senderBot.botName}</at>`;
-          const senderInfo = `[来自机器人「${senderBot.botName}」— 如需 @ 回对方请使用：${senderAtTag}]${taskCompletionInfo}\n\n`;
-          debugLog(`[inbound_claim] Injecting sender info: ${senderBot.botName}${taskCompletionInfo ? ' + task status' : ''}`);
-          return { content: senderInfo + event.content };
-        }
-
-        debugLog(`[inbound_claim] Bot @mention from ${event.senderId}, allowing through`);
-        return;
-      }
-
-      // Bot message without mention — swallow
-      debugLog(`[inbound_claim] Swallowing bot message (not mentioned) from ${event.senderId}`);
-      return { handled: true };
-    });
-
     if (_registerCount === 0) {
       debugLog('All hooks registered successfully');
-      log.info('[openclaw-feishu-a2a] All hooks registered (v0.1.0)');
+      log.info('[openclaw-feishu-a2a] All hooks registered (v0.2.0)');
     }
   }
 };
