@@ -1,4 +1,4 @@
-# OpenClaw Feishu A2A Plugin v0.3.0
+# OpenClaw Feishu A2A Plugin v0.1.0
 
 OpenClaw 插件，实现飞书群聊中多个 Bot 之间的 A2A（Agent-to-Agent）协作通信，带任务状态跟踪和自动 @ 回兜底。
 
@@ -49,7 +49,7 @@ openclaw gateway restart
 
 ### 三个 Hook
 
-| Hook | v0.2.0 | v0.3.0 新增 |
+| Hook | 基础能力 | v0.1.0 新增 |
 |------|--------|------------|
 | `before_prompt_build` | 注入 Bot 列表和协作规则 | + 角色检测（Host/Worker）、进度注入、任务提醒、调度指引 |
 | `message_sending` | `@name` → `<at>` 标签替换 | + 任务派发检测、**Worker 自动 @ 回兜底** |
@@ -66,7 +66,7 @@ openclaw gateway restart
 
 ### 自动 @ 回兜底（核心改进）
 
-飞书的 mention-only 投递模式下，Bot 不加 `<at>` 标签就等于消息丢失。v0.3.0 在 `message_sending` 中检测：如果 Worker 有未完成的任务但回复中没有 @ Host，插件自动在消息开头补上 `<at>` 标签，确保 Host 收到回传。
+飞书的 mention-only 投递模式下，Bot 不加 `<at>` 标签就等于消息丢失。插件在 `message_sending` 中检测：如果 Worker 有未完成的任务但回复中没有 @ Host，自动在消息开头补上 `<at>` 标签，确保 Host 收到回传。
 
 ## 配置（可选）
 
@@ -76,7 +76,7 @@ openclaw gateway restart
 {
   "plugins": {
     "entries": {
-      "feishu-bot-chat": {
+      "openclaw-feishu-a2a": {
         "enabled": true,
         "config": {
           "botRegistry": {
@@ -244,7 +244,7 @@ openclaw gateway restart
 
 ```bash
 # 查看实时日志
-tail -f ~/.openclaw/extensions/feishu-bot-chat/logs/a2a-debug-$(date +%Y-%m-%d).log
+tail -f ~/.openclaw/extensions/openclaw-feishu-a2a/logs/a2a-debug-$(date +%Y-%m-%d).log
 
 # 查看任务状态
 cat ~/.openclaw/fbc-registry/sessions.json | python3 -m json.tool
@@ -253,7 +253,7 @@ cat ~/.openclaw/fbc-registry/sessions.json | python3 -m json.tool
 ## 文件结构
 
 ```
-feishu-bot-chat/
+openclaw-feishu-a2a/
 ├── index.js                 # 主插件（3 个 hooks）
 ├── lib/
 │   └── session-store.js     # 任务状态持久化
@@ -268,8 +268,8 @@ feishu-bot-chat/
 
 ## Credits
 
-- **Leochens** — 原作者（v0.1.0 ~ v0.2.0），实现了自动发现、@ 标签替换、消息过滤等核心功能。[GitHub](https://github.com/Leochens) | [原始仓库](https://github.com/Leochens/feishu-bot-chat-plugin) | [B站](https://space.bilibili.com/351188457)
-- **langyuhero** — v0.3.0 升级，新增任务状态跟踪、自动 @ 回兜底、角色感知等协作闭环能力
+- **Leochens** — 原始 [feishu-bot-chat-plugin](https://github.com/Leochens/feishu-bot-chat-plugin) 作者，实现了自动发现、@ 标签替换、消息过滤等核心功能。[GitHub](https://github.com/Leochens) | [B站](https://space.bilibili.com/351188457)
+- **langyuhero** — v0.1.0（本仓库），基于原始插件大幅重写，新增任务状态跟踪、自动 @ 回兜底、角色感知等协作闭环能力
 
 ## License
 

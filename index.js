@@ -163,10 +163,10 @@ async function discoverBots(config, log) {
         botName: info.botName,
       };
       debugLog(`[discover] Discovered: agent=${agentId}, accountId=${accountId}, botOpenId=${info.botOpenId}, botName=${info.botName}`);
-      log.info(`[feishu-bot-chat] Discovered bot: ${agentId} → ${info.botName} (${info.botOpenId})`);
+      log.info(`[openclaw-feishu-a2a] Discovered bot: ${agentId} → ${info.botName} (${info.botOpenId})`);
     } catch (e) {
       debugLog(`[discover] Failed for agent=${agentId}, accountId=${accountId}: ${e.message}`);
-      log.warn(`[feishu-bot-chat] Failed to discover bot for ${agentId}: ${e.message}`);
+      log.warn(`[openclaw-feishu-a2a] Failed to discover bot for ${agentId}: ${e.message}`);
       if (cached?.bots?.[agentId]) {
         bots[agentId] = cached.bots[agentId];
         debugLog(`[discover] Using stale cache for agent=${agentId}`);
@@ -189,9 +189,9 @@ let _lastBotSignature = '';
 let _registerCount = 0;
 
 const plugin = {
-  id: 'feishu-bot-chat',
-  name: 'Feishu Bot Chat',
-  description: 'Enables bot-to-bot @ communication in Feishu group chats with task state tracking',
+  id: 'openclaw-feishu-a2a',
+  name: 'OpenClaw Feishu A2A',
+  description: 'Enables bot-to-bot @ communication in Feishu group chats with task tracking and auto @-back enforcement',
 
   register(api) {
     const cfg = api.pluginConfig ?? {};
@@ -265,7 +265,7 @@ const plugin = {
 
       if (knownBotCount > 1 && foundCount <= 1) {
         debugLog(`[getGroupBotOpenIds] chat=${chatId} returned only ${foundCount} bots but registry has ${knownBotCount} — likely permission issue, skipping cache`);
-        log.warn(`[feishu-bot-chat] Group member API returned suspiciously few bots (${foundCount}/${knownBotCount}) for chat=${chatId}`);
+        log.warn(`[openclaw-feishu-a2a] Group member API returned suspiciously few bots (${foundCount}/${knownBotCount}) for chat=${chatId}`);
         return null;
       }
 
@@ -293,7 +293,7 @@ const plugin = {
 
       if (isFirstOrChanged) {
         debugLog(`buildLookups: ${agentIdSet.size} bots ready — ${[...agentIdSet].join(', ')}`);
-        log.info(`[feishu-bot-chat] ${agentIdSet.size} bots active: ${[...agentIdSet].join(', ')}`);
+        log.info(`[openclaw-feishu-a2a] ${agentIdSet.size} bots active: ${[...agentIdSet].join(', ')}`);
       }
     }
 
@@ -307,11 +307,11 @@ const plugin = {
         if (Object.keys(registry).length > 0) {
           buildLookups(registry);
         } else {
-          log.warn('[feishu-bot-chat] Auto-discovery found 0 bots — plugin will be inactive');
+          log.warn('[openclaw-feishu-a2a] Auto-discovery found 0 bots — plugin will be inactive');
         }
       }).catch(e => {
         debugLog(`Auto-discovery failed: ${e.message}`);
-        log.error(`[feishu-bot-chat] Auto-discovery failed: ${e.message}`);
+        log.error(`[openclaw-feishu-a2a] Auto-discovery failed: ${e.message}`);
       });
     }
 
@@ -610,7 +610,7 @@ ${inGroupBots.length > 0 ? `本群中可用的机器人：\n${botList}` : '本�
         if (chatId && !nativeA2AChats.has(chatId)) {
           nativeA2AChats.add(chatId);
           debugLog(`[inbound_claim] Native A2A delivery confirmed for chat=${chatId}`);
-          log.info(`[feishu-bot-chat] Native A2A delivery confirmed for chat=${chatId}`);
+          log.info(`[openclaw-feishu-a2a] Native A2A delivery confirmed for chat=${chatId}`);
         }
 
         // --- Task dispatch detection (session/task creation) ---
@@ -682,7 +682,7 @@ ${inGroupBots.length > 0 ? `本群中可用的机器人：\n${botList}` : '本�
 
     if (_registerCount === 0) {
       debugLog('All hooks registered successfully');
-      log.info('[feishu-bot-chat] All hooks registered (v0.3.0)');
+      log.info('[openclaw-feishu-a2a] All hooks registered (v0.1.0)');
     }
   }
 };

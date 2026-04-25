@@ -1,7 +1,7 @@
 {
-  "name": "feishu-bot-chat",
-  "version": "0.3.0",
-  "description": "OpenClaw plugin for bot-to-bot @ communication in Feishu/Lark group chats | 飞书群聊机器人间 A2A 协作通信插件，支持自动发现、任务分解、链式调用",
+  "name": "openclaw-feishu-a2a",
+  "version": "0.1.0",
+  "description": "OpenClaw plugin for Feishu/Lark group chat A2A collaboration with task tracking and auto @-back enforcement | 飞书群聊多 Agent 协作插件，带任务状态跟踪和自动 @ 回兜底",
   "main": "index.js",
   "author": {
     "name": "langyuhero"
