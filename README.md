@@ -129,7 +129,7 @@ feishu-bot-chat/
 
 ## Credits
 
-- **Leochens** — 原作者（v0.1.0 ~ v0.2.0），实现了自动发现、@ 标签替换、消息过滤等核心功能。[B站主页](https://space.bilibili.com/351188457)
+- **Leochens** — 原作者（v0.1.0 ~ v0.2.0），实现了自动发现、@ 标签替换、消息过滤等核心功能。[GitHub](https://github.com/Leochens) | [原始仓库](https://github.com/Leochens/feishu-bot-chat-plugin) | [B站](https://space.bilibili.com/351188457)
 - **langyuhero** — v0.3.0 升级，新增任务状态跟踪、自动 @ 回兜底、角色感知等协作闭环能力
 
 ## License
