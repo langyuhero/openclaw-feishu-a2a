@@ -1,0 +1,132 @@
+# Feishu Bot Chat Plugin v0.3.0
+
+OpenClaw 插件，实现飞书群聊中多个 Bot 之间的 A2A（Agent-to-Agent）协作通信，带任务状态跟踪和自动 @ 回兜底。
+
+## 核心能力
+
+| 能力 | 说明 |
+|------|------|
+| **自动发现** | 自动识别群内所有 Bot 及其 open_id，零配置 |
+| **任务状态跟踪** | 自动记录谁派发了什么任务给谁，完成没有 |
+| **自动 @ 回兜底** | Worker 忘了 @ 回 Host 时，插件自动补上 `<at>` 标签 |
+| **角色感知** | Host 看到协作进度，Worker 看到任务提醒 |
+| **格式转换** | `@botName` 文本自动转为飞书 `<at>` 标签 |
+| **消息过滤** | 过滤非 @ 的 Bot 消息，避免无关触发 |
+| **群成员过滤** | 只展示当前群内实际存在的 Bot |
+
+## 前置条件
+
+每个参与协作的 Bot 应用需要在飞书开发者后台开通：
+
+**`im:message.group_at_msg.include_bot:readonly`**（接收群聊中机器人 @机器人的消息）
+
+路径：开发者后台 → 应用 → 权限管理 → 搜索上述权限 → 开通
+
+## 安装
+
+```bash
+# 克隆到 OpenClaw 扩展目录
+cd ~/.openclaw/extensions
+git clone https://github.com/langyuhero/feishu-bot-chat.git
+
+# 重启 gateway 生效
+openclaw gateway restart
+```
+
+插件会自动发现所有绑定了飞书 account 的 agent，无需额外配置。
+
+## 工作原理
+
+```
+用户 @ 主持者 → 主持者拆解任务 @ Worker
+                         ↓
+              飞书原生投递：Worker 收到任务
+                         ↓
+              Worker 完成任务，@ 回主持者（插件自动兜底）
+                         ↓
+              主持者收到结果，汇总回复用户
+```
+
+### 三个 Hook
+
+| Hook | v0.2.0 | v0.3.0 新增 |
+|------|--------|------------|
+| `before_prompt_build` | 注入 Bot 列表和协作规则 | + 角色检测（Host/Worker）、进度注入、任务提醒、调度指引 |
+| `message_sending` | `@name` → `<at>` 标签替换 | + 任务派发检测、**Worker 自动 @ 回兜底** |
+| `inbound_claim` | 过滤非 @ 消息、注入发送者信息 | + 任务创建、完成检测、进度状态注入 |
+
+### 任务状态跟踪
+
+插件在 `~/.openclaw/fbc-registry/sessions.json` 中维护协作状态：
+
+- Host @ Worker → 自动创建 session + task（状态：dispatched）
+- Worker @ 回 Host → 自动标记 task completed
+- 所有 task 完成 → 提示 Host 汇总结果
+- 2 小时无活动 → 自动过期清理
+
+### 自动 @ 回兜底（核心改进）
+
+飞书的 mention-only 投递模式下，Bot 不加 `<at>` 标签就等于消息丢失。v0.3.0 在 `message_sending` 中检测：如果 Worker 有未完成的任务但回复中没有 @ Host，插件自动在消息开头补上 `<at>` 标签，确保 Host 收到回传。
+
+## 配置（可选）
+
+默认零配置即可工作。如需手动指定 Bot 列表，可在 `openclaw.json` 中配置：
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "feishu-bot-chat": {
+        "enabled": true,
+        "config": {
+          "botRegistry": {
+            "agent-id": {
+              "accountId": "feishu-account-id",
+              "botOpenId": "ou_xxxxxxxxxxxxxxxx",
+              "botName": "显示名称"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+## 内置 Skills
+
+| Skill | 说明 |
+|-------|------|
+| `a2a-host-protocol` | 主持者协议：需求澄清 → 规划确认 → 派发 → 跟踪 → 汇总 |
+| `a2a-worker-protocol` | 执行者协议：接收任务 → 执行 → @ 回汇报 |
+| `a2a-message-format` | 消息格式规范、中断处理、模式切换 |
+
+## 调试
+
+```bash
+# 查看实时日志
+tail -f ~/.openclaw/extensions/feishu-bot-chat/logs/a2a-debug-$(date +%Y-%m-%d).log
+
+# 查看任务状态
+cat ~/.openclaw/fbc-registry/sessions.json | python3 -m json.tool
+```
+
+## 文件结构
+
+```
+feishu-bot-chat/
+├── index.js                 # 主插件（3 个 hooks）
+├── lib/
+│   └── session-store.js     # 任务状态持久化
+├── openclaw.plugin.json     # 插件清单
+├── package.json
+├── skills/
+│   ├── a2a-host-protocol/   # 主持者协议
+│   ├── a2a-worker-protocol/ # 执行者协议
+│   └── a2a-message-format/  # 消息格式规范
+└── HOOK.md                  # Hook 说明文档
+```
+
+## License
+
+MIT
