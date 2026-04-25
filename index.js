@@ -217,6 +217,20 @@ const plugin = {
     // Last user message per chatId — used as userRequest when creating sessions
     const lastUserMessage = new Map();
 
+    // Agent metadata from openclaw.json: { agentId → { name, allowAgents, isDefault, description } }
+    const agentMeta = new Map();
+    const agentList = api.config?.agents?.list || [];
+    for (const agent of agentList) {
+      if (!agent.id) continue;
+      agentMeta.set(agent.id, {
+        name: agent.name || agent.id,
+        description: agent.description || agent.role || '',
+        allowAgents: agent.subagents?.allowAgents || [],
+        isDefault: !!agent.default,
+      });
+    }
+    debugLog(`[init] Loaded metadata for ${agentMeta.size} agents: ${[...agentMeta.keys()].join(', ')}`);
+
     // Feishu account config for API calls
     const feishuChannel = api.config?.channels?.feishu || {};
     const feishuAccounts = feishuChannel.accounts || {};
@@ -416,31 +430,37 @@ const plugin = {
           }
         }
 
-      } else if (currentAgentId === 'main') {
+      } else if (agentMeta.get(currentAgentId)?.isDefault) {
         roleContext =
           `[协作调度指引]\n` +
           `收到用户任务后：\n` +
-          `1. 如果任务描述不够清晰（缺少目标受众、输出格式、重点方向等关键信息），先问用户 2-3 个关键问题。最多追问 2 轮，不能无休止。\n` +
+          `1. 如果任务描述不够清晰，先问用户 2-3 个关键问题。最多追问 2 轮。\n` +
           `2. 任务明确后，判断协作方式：\n` +
-          `   - 涉及行业趋势、数据、事实的内容创作 → 先派调研 Agent，再派创作 Agent（串行）\n` +
           `   - 复杂多人任务 → 先告知用户分工计划，确认后再派发\n` +
           `   - 简单单人任务 → 直接 @ 派发\n` +
           `3. 每次回复最多 @ 1 个 Agent，等对方回传后再 @ 下一个\n\n`;
       }
 
-      // --- Smart routing guidance for workers ---
-      if (currentAgentId !== 'main' && role !== 'HOST') {
-        const routingRules = {
-          strategist: `[智能协作路由]\n` +
-            `你可以直接回答的：观点判断、方案对比、优劣分析、建议等不依赖外部数据的决策问题。\n` +
-            `你应该先 @ 司南调研的：涉及具体价格、市场行情、地理信息、历史数据、政策法规等需要事实依据的问题。\n` +
-            `→ 不确定时宁可先让司南查一下，基于数据的建议才有说服力。\n\n`,
-          researcher: `[智能协作路由]\n` +
-            `调研完成后，如果结果需要决策分析（方案选择、优劣对比），可以 @ 谋远 协助分析。\n` +
-            `如果需要文案或视觉输出，可以 @ 灵犀。\n\n`,
-        };
-        const routing = routingRules[currentAgentId];
-        if (routing) roleContext += routing;
+      // --- Dynamic routing guidance based on agent config ---
+      const myMeta = agentMeta.get(currentAgentId);
+      if (myMeta && myMeta.allowAgents.length > 0) {
+        const peers = myMeta.allowAgents
+          .filter(id => id !== currentAgentId && botRegistry[id])
+          .map(id => {
+            const bot = botRegistry[id];
+            const peerMeta = agentMeta.get(id);
+            const desc = peerMeta?.description || bot?.botName || id;
+            return `- ${bot.botName}（${desc}）`;
+          })
+          .filter(Boolean);
+
+        if (peers.length > 0) {
+          roleContext +=
+            `[可协作的 Agent]\n` +
+            `当任务超出你的专业范围或需要其他能力支持时，可以在群聊中 @ 以下 Agent：\n` +
+            peers.join('\n') + '\n' +
+            `→ 简单问题直接回答；复杂问题或需要数据/事实支撑时，先 @ 合适的 Agent 协作。\n\n`;
+        }
       }
 
       // --- Bot list injection (filtered by group membership) ---
