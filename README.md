@@ -1,4 +1,4 @@
-# Feishu Bot Chat Plugin v0.3.0
+# OpenClaw Feishu A2A Plugin v0.3.0
 
 OpenClaw 插件，实现飞书群聊中多个 Bot 之间的 A2A（Agent-to-Agent）协作通信，带任务状态跟踪和自动 @ 回兜底。
 
