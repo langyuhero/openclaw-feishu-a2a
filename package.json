@@ -6,10 +6,17 @@
   "author": {
     "name": "langyuhero"
   },
+  "contributors": [
+    {
+      "name": "Leochens",
+      "url": "https://space.bilibili.com/351188457",
+      "role": "Original author (v0.1.0 ~ v0.2.0)"
+    }
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/langyuhero/feishu-bot-chat.git"
+    "url": "git+https://github.com/langyuhero/openclaw-feishu-a2a.git"
   },
   "keywords": [
     "openclaw",

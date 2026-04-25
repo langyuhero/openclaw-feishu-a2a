@@ -27,7 +27,7 @@ OpenClaw 插件，实现飞书群聊中多个 Bot 之间的 A2A（Agent-to-Agent
 ```bash
 # 克隆到 OpenClaw 扩展目录
 cd ~/.openclaw/extensions
-git clone https://github.com/langyuhero/feishu-bot-chat.git
+git clone https://github.com/langyuhero/openclaw-feishu-a2a.git feishu-bot-chat
 
 # 重启 gateway 生效
 openclaw gateway restart
@@ -126,6 +126,11 @@ feishu-bot-chat/
 │   └── a2a-message-format/  # 消息格式规范
 └── HOOK.md                  # Hook 说明文档
 ```
+
+## Credits
+
+- **Leochens** — 原作者（v0.1.0 ~ v0.2.0），实现了自动发现、@ 标签替换、消息过滤等核心功能。[B站主页](https://space.bilibili.com/351188457)
+- **langyuhero** — v0.3.0 升级，新增任务状态跟踪、自动 @ 回兜底、角色感知等协作闭环能力
 
 ## License
 
