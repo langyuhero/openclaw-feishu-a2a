@@ -449,8 +449,10 @@ const plugin = {
           .map(id => {
             const bot = botRegistry[id];
             const peerMeta = agentMeta.get(id);
-            const desc = peerMeta?.description || bot?.botName || id;
-            return `- ${bot.botName}（${desc}）`;
+            const desc = peerMeta?.description || '';
+            return desc
+              ? `- ${bot.botName}（${desc}）`
+              : `- ${bot.botName}`;
           })
           .filter(Boolean);
 
@@ -490,8 +492,9 @@ const plugin = {
       }
 
       const botList = inGroupBots
-        .map(([, bot]) => {
-          const desc = bot.description ? ` — ${bot.description}` : '';
+        .map(([agentId, bot]) => {
+          const meta = agentMeta.get(agentId);
+          const desc = meta?.description ? ` — ${meta.description}` : '';
           const atTag = `<at user_id="${bot.botOpenId}">${bot.botName}</at>`;
           return `- ${atTag}${desc}`;
         })

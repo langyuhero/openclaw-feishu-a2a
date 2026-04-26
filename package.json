@@ -51,8 +51,7 @@
     ],
     "hooks": [
       "before_prompt_build",
-      "message_sending",
-      "inbound_claim"
+      "message_sending"
     ],
     "compat": {
       "pluginApi": ">=2026.3.24-beta.2",
