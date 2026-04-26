@@ -17,13 +17,118 @@ OpenClaw 插件，实现飞书/Lark 群聊中多个 Bot 之间的 A2A（Agent-to
 
 ## 前置条件
 
-每个参与协作的 Bot 应用需要在飞书开发者后台开通：
+### 1. OpenClaw + openclaw-lark 插件
 
-**`im:message.group_at_msg.include_bot:readonly`**（接收群聊中机器人 @机器人的消息）
+本插件依赖 [openclaw-lark](https://github.com/larksuite/openclaw-lark)（飞书官方 Channel 插件）提供的飞书消息通道。请先完成以下安装：
 
-路径：开发者后台 → 应用 → 权限管理 → 搜索上述权限 → 开通
+```bash
+# 安装 OpenClaw（需 Node.js >= 22）
+npm install -g openclaw
+
+# 确认版本 >= 2026.3.24
+openclaw -v
+
+# 安装飞书 Channel 插件
+openclaw setup
+# 选择 Lark/Feishu (飞书) channel，按向导完成配置
+```
+
+> 详细的 openclaw-lark 安装和配置指南：[OpenClaw 飞书官方插件使用指南](https://bytedance.larkoffice.com/docx/MFK7dDFLFoVlOGxWCv5cTXKmnMh)
+
+### 2. 飞书应用创建与配置
+
+每个参与 A2A 协作的 Bot 都需要一个独立的飞书自建应用。
+
+#### 创建应用
+
+1. 登录 [飞书开放平台](https://open.feishu.cn/app)
+2. 点击「创建自建应用」
+3. 填写应用名称和描述
+4. 在「凭证与基础信息」页面获取 **App ID** 和 **App Secret**
+
+#### 启用机器人能力
+
+路径：应用功能 → 机器人 → 启用
+
+#### 配置事件订阅
+
+路径：开发与配置 → 事件与回调
+
+- 订阅方式：选择 **长连接**（openclaw-lark 使用 WebSocket 接收事件）
+- 添加事件：
+  - `im.message.receive_v1`（接收消息）
+  - `application.bot.menu_v6`（机器人菜单事件，可选）
+
+#### 配置消息卡片回传交互
+
+路径：开发与配置 → 消息卡片回传交互
+
+- 回传方式：选择 **使用长连接接收**
+
+> 不开通此项会导致卡片按钮点击无反应。
+
+### 3. 飞书应用权限
+
+#### 基础权限（openclaw-lark 必需）
+
+以下 20 个权限是 openclaw-lark 正常运行所必需的，在 `openclaw setup` 向导中会自动引导开通：
+
+| 权限 | 用途 |
+|------|------|
+| `contact:contact.base:readonly` | 获取用户基本信息（姓名、头像） |
+| `docx:document:readonly` | 读取文档内容、预览文档链接 |
+| `im:chat:read` | 读取群聊信息、获取群成员列表 |
+| `im:chat:update` | 修改群聊设置（群名称、群公告等） |
+| `im:message.group_at_msg:readonly` | 接收群聊中 @ 机器人的消息 |
+| `im:message.p2p_msg:readonly` | 接收私聊消息 |
+| `im:message.pins:read` | 读取消息置顶状态 |
+| `im:message.pins:write_only` | 置顶/取消置顶消息 |
+| `im:message.reactions:read` | 读取消息表情回复 |
+| `im:message.reactions:write_only` | 添加/删除消息表情回复 |
+| `im:message:readonly` | 读取消息内容、历史消息 |
+| `im:message:recall` | 撤回机器人发送的消息 |
+| `im:message:send_as_bot` | 以机器人身份发送消息 |
+| `im:message:send_multi_users` | 批量发送私聊消息 |
+| `im:message:send_sys_msg` | 发送系统通知消息 |
+| `im:message:update` | 更新/编辑已发送的消息 |
+| `im:resource` | 上传/下载消息资源（图片、文件等） |
+| `application:application:self_manage` | 查询应用自身权限状态 |
+| `cardkit:card:write` | 创建和更新消息卡片 |
+| `cardkit:card:read` | 读取消息卡片状态 |
+
+#### A2A 协作专用权限
+
+以下权限是本插件实现 Bot 间 @ 通信的关键，**必须额外开通**：
+
+| 权限 | 用途 |
+|------|------|
+| `im:message.group_at_msg.include_bot:readonly` | 接收群聊中机器人 @ 机器人的消息（A2A 核心） |
+
+> 路径：开发者后台 → 应用 → 权限管理 → 搜索权限名 → 开通
+
+#### 可选的用户级权限
+
+如果你的 Agent 需要操作文档、日历、任务等飞书功能，还需要开通对应的用户级权限。openclaw-lark 支持 74 种用户级权限，按需开通即可。常用的有：
+
+| 功能域 | 典型权限 |
+|--------|---------|
+| 日历 | `calendar:calendar:read`, `calendar:calendar.event:create` 等 |
+| 任务 | `task:task:read`, `task:task:write` 等 |
+| 多维表格 | `base:app:read`, `base:record:create` 等 |
+| 云文档 | `docx:document:create`, `docx:document:write_only` 等 |
+| 知识库 | `wiki:space:retrieve`, `wiki:node:read` 等 |
+
+> 完整权限列表参见 [openclaw-lark 源码 tool-scopes.ts](https://github.com/larksuite/openclaw-lark/blob/main/src/core/tool-scopes.ts)
+
+### 4. 发布应用
+
+权限配置完成后，需要创建应用版本并发布（或添加到测试企业/测试群）才能生效。
+
+路径：应用发布 → 创建版本 → 申请发布
 
 ## 安装
+
+确保上述前置条件已满足后：
 
 ```bash
 # 克隆到 OpenClaw 扩展目录
